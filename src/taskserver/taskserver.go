@@ -1,7 +1,7 @@
 package main
 import "dist/distconfig"
 import "dist/distio"
-import "strconv"
+//import "strconv"
 func main() {
 	distconfig.ReadAndParseConfig("services.yaml");
 	hosts := distconfig.GetHostsConfig();
@@ -11,9 +11,8 @@ func main() {
 		go distio.CreateTaskServer(v.Port,endchan)
 	}
 
-	result := 0
+	//result := 0
 	for i:=0;i<len(hosts);i++ {
-		result = <-endchan
-		print("Process ",strconv.Itoa(result)," Ended\n")
+		_ = <-endchan
 	}
 }

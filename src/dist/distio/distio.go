@@ -52,10 +52,8 @@ func (v *PortBaby) ReaderProc() {
 }
 func (v *PortBaby)CreateRoutine (om *OutMessage) <-chan InMessage {
 	respchan := make(chan InMessage) 
-	print("About to lock ",om.Uid,"\n")
 	v.respMut.Lock()
 	v.respMap[om.Uid]=respchan 
-	print("sent ",om.Uid,"\n")
 	v.sendMessage(om)
 	v.respMut.Unlock()
 	return respchan
@@ -99,7 +97,6 @@ func (v *PortBaby)sendMessage (om *OutMessage) {
 	nlen := len(jenc)
 	fb := uint8(((nlen >> 8)&0xFF))
 	nb := uint8((nlen&0xFF))
-	print("Sending ",om.Uid,"\n")
 	c := *(v.conn)
 	nwrit,werr := c.Write([]byte{fb,nb})
 	if nwrit != 2 || werr != nil {
@@ -196,7 +193,6 @@ func (v *PortBaby)TaskWrite(workindex int, obuf []byte) {
 		panic("could not write all objects")
 	}
 	v.txMut.Unlock()
-	print("Done Task ",workindex,"\n")
 }
 
 func CreateTaskServer(port int, end chan<- int) {
@@ -207,7 +203,6 @@ func CreateTaskServer(port int, end chan<- int) {
 		panic("failed to start server")
 	}
 	for {
-		print("Accepting\n")
 		conn, err := ln.Accept()
 		rd := PortBaby{}
 		rd.InitBuffer()
