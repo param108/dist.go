@@ -7,6 +7,7 @@ import "io"
 import "encoding/binary"
 import "encoding/json"
 import "time"
+import "log"
 // define the Message
 type InMessage struct {
 	Uid int
@@ -51,6 +52,7 @@ func (v *PortBaby) ReaderProc() {
 }
 func (v *PortBaby)CreateRoutine (om *OutMessage) <-chan InMessage {
 	respchan := make(chan InMessage) 
+	print("About to lock ",om.Uid,"\n")
 	v.respMut.Lock()
 	v.respMap[om.Uid]=respchan 
 	print("sent ",om.Uid,"\n")
@@ -82,9 +84,10 @@ func (v *PortBaby)readMessage() {
 		panic("Could not unmarshal data")
 	}
 	v.respMut.Lock()
-	v.respMap[im.Uid]<-im
+	rchan := v.respMap[im.Uid]
 	delete(v.respMap,im.Uid)
 	v.respMut.Unlock()
+	rchan<-im
 }
 
 func (v *PortBaby)sendMessage (om *OutMessage) {
@@ -96,6 +99,7 @@ func (v *PortBaby)sendMessage (om *OutMessage) {
 	nlen := len(jenc)
 	fb := uint8(((nlen >> 8)&0xFF))
 	nb := uint8((nlen&0xFF))
+	print("Sending ",om.Uid,"\n")
 	c := *(v.conn)
 	nwrit,werr := c.Write([]byte{fb,nb})
 	if nwrit != 2 || werr != nil {
@@ -107,6 +111,15 @@ func (v *PortBaby)sendMessage (om *OutMessage) {
 	}
 }
 
+func (v *PortBaby)SendStop () {
+	fb := uint8(0)
+	nb := uint8(0)
+	c := *(v.conn)
+	nwrit,werr := c.Write([]byte{fb,nb})
+	if nwrit != 2 || werr != nil {
+		panic("failed writing size")
+	}
+}
 
 // server side
 
@@ -118,21 +131,31 @@ func (v *PortBaby) HandleTask(conn *net.Conn) {
 	//then read till the end
 	nlen,err := io.ReadFull(*v.conn,v.readBuf[:2])
 	if err != nil {
-		panic(strings.Join([]string{"Could not read Full:",err.Error()},":"))
+		log.Print(strings.Join([]string{"Could not read Full:",err.Error()},":"))
+		return
 	}
 	msgbytes := []byte{v.readBuf[1],v.readBuf[0],0,0,0,0,0,0}
 	msglen,merr := binary.Uvarint(msgbytes)
+	if msglen == 0 {
+			log.Print("Ending Session\n")
+			return
+	}
 	if merr <= 0 {
-		panic("Failed to convert msgbytes")
+		log.Print("Failed to convert msgbytes")
+		return
 	}
 	nlen,err = io.ReadFull(*v.conn,v.readBuf[:msglen])
 	rlen := uint64(nlen)
 	if err != nil || rlen != msglen{
-		panic("Could not read Full Message")
+		log.Print("Could not read Full Message")
+		return
 	}
 
 	obuf := make([]byte,int(msglen))
+	// copying the data to a local buffer
 	copy(obuf,v.readBuf[:msglen])
+
+	// do the actual work of unmarshalling and responding
 	go v.TaskWrite(i,obuf)
 	i++
 	}
@@ -163,6 +186,7 @@ func (v *PortBaby)TaskWrite(workindex int, obuf []byte) {
 	fb := uint8(((nlen >> 8)&0xFF))
 	nb := uint8((nlen&0xFF))
 	c := *(v.conn)
+	v.txMut.Lock()
 	nwrit,werr := c.Write([]byte{fb,nb})
 	if nwrit != 2 || werr != nil {
 		panic("failed writing size")
@@ -171,6 +195,7 @@ func (v *PortBaby)TaskWrite(workindex int, obuf []byte) {
 	if nwrit != len(jenc) || werr != nil {
 		panic("could not write all objects")
 	}
+	v.txMut.Unlock()
 	print("Done Task ",workindex,"\n")
 }
 
@@ -191,6 +216,6 @@ func CreateTaskServer(port int, end chan<- int) {
 			end <- port
 			break
 		}
-		rd.HandleTask(&conn)
+		go rd.HandleTask(&conn)
 	}
 }

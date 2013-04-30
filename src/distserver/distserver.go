@@ -25,13 +25,13 @@ func distribute(ports []distio.PortBaby, om distio.OutMessage, end chan<- int) {
 	}()
 	chlist := make([]<-chan distio.InMessage,len(ports))
 	index := 0
-	go waitReturn(chlist,om.Uid,end)
 	for _,v := range ports {
 		chlist[index] = v.CreateRoutine(&om)
 		index++
 	}
 	print("Created Routine ",om.Uid,"\n")
 	// wait for all five to return
+	go waitReturn(chlist,om.Uid,end)
 }
 
 func waitReturn(chlist []<-chan distio.InMessage,uid int,end chan<- int){
@@ -44,7 +44,6 @@ func waitReturn(chlist []<-chan distio.InMessage,uid int,end chan<- int){
 func sendData(ports []distio.PortBaby) {
 	donechan := make(chan int)
 	numtasks := 1000
-	go EndTask(numtasks,donechan)
 	for i:=0 ; i<numtasks;i++ {
 		om := distio.OutMessage{i,100, "Hurrah"}
 		//print("Starting process ",strconv.Itoa(i),"\n")
@@ -52,11 +51,15 @@ func sendData(ports []distio.PortBaby) {
 		//time.Sleep(10*time.Millisecond)
 	}
 	//result := 0
+	EndTask(ports,numtasks,donechan)
 }
 
-func EndTask(numtasks int, donechan chan<- int) {
+func EndTask(ports []distio.PortBaby,numtasks int, donechan <-chan int) {
      	for i:=0; i<numtasks; i++ {
 		_ = <- donechan
 		print("Process ",i," completed\n")
+	}
+	for _,v := range ports {
+		v.SendStop()
 	}
 }
